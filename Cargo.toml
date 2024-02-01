@@ -11,3 +11,6 @@ clap = { version = "4.4.18", features = ["derive"] }
 nix = { version = "0.27", features = ["mman", "poll"] }
 perf-event-open-sys = "4.0"
 colored = "2"
+tokio = { version = "1.35.1", features = ["macros", "rt", "net"] }
+procfs = { version = "0.16.0", default-features = false }
+futures = "0.3.30"
