@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: dtolnay/rust-toolchain@master
       with:
@@ -17,22 +17,25 @@ jobs:
         targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
         components: rust-src
 
-    - uses: Swatinem/rust-cache@v2
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: lld
+        version: 1.0
 
     - name: Build x86_64
       run: cargo build --release
 
     - name: Upload x86_64 Building
-      uses: actions/upload-artifact@v3.1.2
+      uses: actions/upload-artifact@v4
       with:
         name: estrace-x86_64-unknown-linux-musl
-        path: target/x86_64-unknown-linux-musl/release/estrace
+        path: target/x86_64-unknown-linux-musl/release/pwatch
 
     - name: Build AArch64
       run: cargo build --target aarch64-unknown-linux-musl --release
 
     - name: Upload AArch64 Building
-      uses: actions/upload-artifact@v3.1.2
+      uses: actions/upload-artifact@v4
       with:
         name: estrace-aarch64-unknown-linux-musl
-        path: target/aarch64-unknown-linux-musl/release/estrace
+        path: target/aarch64-unknown-linux-musl/release/pwatch
