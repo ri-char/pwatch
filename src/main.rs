@@ -37,10 +37,10 @@ fn parse_watchpoint_type(s: &str) -> Option<(u32, u32)> {
     if let Some(s) = s.strip_prefix("rw") {
         let len = parse_len(s)?;
         Some((sys::bindings::HW_BREAKPOINT_RW, len))
-    } else if let Some(s) = s.strip_prefix("r") {
+    } else if let Some(s) = s.strip_prefix('r') {
         let len = parse_len(s)?;
         Some((sys::bindings::HW_BREAKPOINT_R, len))
-    } else if let Some(s) = s.strip_prefix("w") {
+    } else if let Some(s) = s.strip_prefix('w') {
         let len = parse_len(s)?;
         Some((sys::bindings::HW_BREAKPOINT_W, len))
     } else if s == "x" {
@@ -54,11 +54,7 @@ fn parse_watchpoint_type(s: &str) -> Option<(u32, u32)> {
 }
 
 fn parse_addr(s: &str) -> Option<u64> {
-    if s.starts_with("0x") {
-        u64::from_str_radix(&s[2..], 16).ok()
-    } else {
-        u64::from_str_radix(s, 16).ok()
-    }
+    u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok()
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -99,7 +95,13 @@ async fn main() -> anyhow::Result<()> {
 
 fn handle_event(data: SampleData) {
     println!("-------");
-    println!("{}: {} {}: {}", "pid".yellow().bold(), data.pid, "tid".yellow().bold(), data.tid);
+    println!(
+        "{}: {} {}: {}",
+        "pid".yellow().bold(),
+        data.pid,
+        "tid".yellow().bold(),
+        data.tid
+    );
     for (i, reg) in data.regs.iter().enumerate() {
         print!("{:>5}: 0x{:016x} ", arch::id_to_str(i).bold().blue(), reg);
         if (i + 1) % 4 == 0 {

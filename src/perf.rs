@@ -30,15 +30,14 @@ impl PerfMap {
     ) -> anyhow::Result<Self> {
         let mut attrs = sys::bindings::perf_event_attr::default();
 
-        // Populate the fields we need.
+        attrs.set_precise_ip(2);
         attrs.size = std::mem::size_of::<sys::bindings::perf_event_attr>() as u32;
         attrs.type_ = sys::bindings::PERF_TYPE_BREAKPOINT;
         attrs.__bindgen_anon_1.sample_period = 1;
         attrs.__bindgen_anon_2.wakeup_events = 1;
         attrs.bp_type = r#type;
         attrs.__bindgen_anon_3.bp_addr = addr;
-        attrs.__bindgen_anon_4.bp_len = len as u64;
-        attrs.set_precise_ip(2);
+        attrs.__bindgen_anon_4.bp_len = len;
         attrs.sample_type = sys::bindings::PERF_SAMPLE_REGS_USER | sys::bindings::PERF_SAMPLE_TID;
         attrs.sample_regs_user = arch::SAMPLE_REGS_USER;
 
@@ -75,10 +74,7 @@ impl PerfMap {
         })
     }
 
-    pub async fn events<F: FnMut(SampleData) -> ()>(
-        &self,
-        mut handle: F,
-    ) -> anyhow::Result<Infallible> {
+    pub async fn events<F: FnMut(SampleData)>(&self, mut handle: F) -> anyhow::Result<Infallible> {
         let mmap_page_metadata = unsafe {
             (self.mmap_addr as *mut sys::bindings::perf_event_mmap_page)
                 .as_mut()
@@ -106,8 +102,8 @@ impl PerfMap {
                     let abi = unsafe { *(get_addr(offset) as *const u64) };
                     offset += 8;
                     let mut regs = vec![0u64; arch::regs_count()];
-                    for i in 0..arch::regs_count() {
-                        regs[i] = unsafe { *(get_addr(offset) as *const u64) };
+                    for reg in regs.iter_mut().take(arch::regs_count()) {
+                        *reg = unsafe { *(get_addr(offset) as *const u64) };
                         offset += 8;
                     }
                     handle(SampleData {
