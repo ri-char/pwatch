@@ -1,4 +1,5 @@
 use crate::arch;
+use log::warn;
 use nix::sys::mman::{MapFlags, ProtFlags};
 use perf_event_open_sys as sys;
 use std::{
@@ -11,6 +12,7 @@ use tokio::io::unix::AsyncFd;
 pub struct PerfMap {
     mmap_addr: usize,
     fd: AsyncFd<OwnedFd>,
+    backtrace: bool,
 }
 
 pub struct SampleData {
@@ -18,6 +20,7 @@ pub struct SampleData {
     pub tid: u32,
     pub abi: u64,
     pub regs: Vec<u64>,
+    pub backtrace: Option<Vec<u64>>,
 }
 
 impl PerfMap {
@@ -27,6 +30,7 @@ impl PerfMap {
         len: u64,
         pid: i32,
         buf_size: usize,
+        backtrace: bool,
     ) -> anyhow::Result<Self> {
         let mut attrs = sys::bindings::perf_event_attr::default();
 
@@ -39,6 +43,11 @@ impl PerfMap {
         attrs.__bindgen_anon_3.bp_addr = addr;
         attrs.__bindgen_anon_4.bp_len = len;
         attrs.sample_type = sys::bindings::PERF_SAMPLE_REGS_USER | sys::bindings::PERF_SAMPLE_TID;
+        if backtrace {
+            attrs.sample_type |= sys::bindings::PERF_SAMPLE_CALLCHAIN;
+            attrs.set_exclude_callchain_kernel(1);
+            attrs.set_exclude_callchain_kernel(0);
+        }
         attrs.sample_regs_user = arch::SAMPLE_REGS_USER;
 
         let perf_fd = unsafe {
@@ -71,6 +80,7 @@ impl PerfMap {
         Ok(Self {
             mmap_addr: mmap_addr as usize,
             fd: AsyncFd::new(perf_fd)?,
+            backtrace,
         })
     }
 
@@ -99,6 +109,17 @@ impl PerfMap {
                     offset += 4;
                     let tid = unsafe { *(get_addr(offset) as *const u32) };
                     offset += 4;
+                    let backtrace = self.backtrace.then(|| {
+                        let backtrace_size = unsafe { *(get_addr(offset) as *const u64) };
+                        offset += 8;
+                        (0..backtrace_size)
+                            .map(|_| {
+                                let addr = unsafe { *(get_addr(offset) as *const u64) };
+                                offset += 8;
+                                addr
+                            })
+                            .collect()
+                    });
                     let abi = unsafe { *(get_addr(offset) as *const u64) };
                     offset += 8;
                     let mut regs = vec![0u64; arch::regs_count()];
@@ -111,14 +132,13 @@ impl PerfMap {
                         tid,
                         abi,
                         regs,
+                        backtrace,
                     });
                 } else if data_header.type_ == sys::bindings::PERF_RECORD_LOST {
                     let lost = unsafe { *(get_addr(offset) as *const u64) };
-                    println!("-------");
-                    println!("Lost {} events", lost);
+                    warn!("Lost {} events", lost);
                 } else {
-                    println!("-------");
-                    println!("Unknown type");
+                    warn!("Unknown type");
                 }
                 read_data_size += data_header.size as u64;
                 mmap_page_metadata.data_tail = read_data_size;

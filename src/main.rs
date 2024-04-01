@@ -1,5 +1,6 @@
 use clap::Parser;
 use colored::Colorize;
+use log::error;
 use perf::{PerfMap, SampleData};
 use perf_event_open_sys as sys;
 mod arch;
@@ -7,12 +8,15 @@ mod perf;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(short, default_value = "0")]
+    #[arg(long, default_value = "0")]
     /// buffer size, in power of 2. For example, 2 means 2^2 pages = 4 * 4096 bytes.
     buf_size: usize,
     #[arg(short)]
     /// whether the target is a thread or a process.
     thread: bool,
+    #[arg(short, long)]
+    /// whether to print backtrace.
+    backtrace: bool,
     /// target pid, if thread is true, this is the tid of the target thread.
     pid: u32,
     /// watchpoint type, can be read(r), write(w), readwrite(rw) or execve(x).
@@ -59,6 +63,7 @@ fn parse_addr(s: &str) -> Option<u64> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    pretty_env_logger::init();
     let args = Args::parse();
 
     let (ty, bp_len) = parse_watchpoint_type(&args.r#type)
@@ -69,8 +74,23 @@ async fn main() -> anyhow::Result<()> {
         procfs::process::Process::new(args.pid as i32)?
             .tasks()?
             .filter_map(Result::ok)
-            .map(|t| PerfMap::new(ty, addr, bp_len as u64, t.tid, args.buf_size))
-            .filter_map(Result::ok)
+            .map(|t| {
+                PerfMap::new(
+                    ty,
+                    addr,
+                    bp_len as u64,
+                    t.tid,
+                    args.buf_size,
+                    args.backtrace,
+                )
+            })
+            .filter_map(|r| match r {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    error!("perf_map_open error: {}", e);
+                    None
+                }
+            })
             .collect::<Vec<_>>()
     } else {
         vec![PerfMap::new(
@@ -79,12 +99,17 @@ async fn main() -> anyhow::Result<()> {
             bp_len as u64,
             args.pid as i32,
             args.buf_size,
+            args.backtrace,
         )?]
     };
+    if maps.is_empty() {
+        error!("no valid perf map");
+        return Ok(());
+    }
     let (res, _, _) = futures::future::select_all(maps.into_iter().map(|m| {
         tokio::spawn(async move {
             if let Err(e) = m.events(handle_event).await {
-                eprintln!("error: {}", e);
+                error!("error: {}", e);
             }
         })
     }))
@@ -110,5 +135,11 @@ fn handle_event(data: SampleData) {
     }
     if data.regs.len() % 4 != 0 {
         println!();
+    }
+    if let Some(backtrace) = data.backtrace {
+        println!("{}:", "backtrace".yellow().bold());
+        for addr in backtrace {
+            println!("  0x{:016x}", addr);
+        }
     }
 }

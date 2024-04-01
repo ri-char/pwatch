@@ -14,3 +14,9 @@ colored = "2"
 tokio = { version = "1.35.1", features = ["macros", "rt", "net"] }
 procfs = { version = "0.16.0", default-features = false }
 futures = "0.3.30"
+log = "0.4"
+pretty_env_logger = "0.4"
+
+[[example]]
+name = "watch-target"
+path = "examples/watch_target.rs"
