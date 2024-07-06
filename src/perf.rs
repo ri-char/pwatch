@@ -18,7 +18,6 @@ pub struct PerfMap {
 pub struct SampleData {
     pub pid: u32,
     pub tid: u32,
-    pub abi: u64,
     pub regs: Vec<u64>,
     pub backtrace: Option<Vec<u64>>,
 }
@@ -65,10 +64,10 @@ impl PerfMap {
                 NonZeroUsize::new((1 + (1 << buf_size)) * 4096).unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_SHARED,
-                Some(&perf_fd),
+                &perf_fd,
                 0,
             )
-        }?;
+        }?.as_ptr() as usize;
         let mmap_page_metadata = unsafe {
             (mmap_addr as *mut sys::bindings::perf_event_mmap_page)
                 .as_mut()
@@ -120,7 +119,6 @@ impl PerfMap {
                             })
                             .collect()
                     });
-                    let abi = unsafe { *(get_addr(offset) as *const u64) };
                     offset += 8;
                     let mut regs = vec![0u64; arch::regs_count()];
                     for reg in regs.iter_mut().take(arch::regs_count()) {
@@ -130,7 +128,6 @@ impl PerfMap {
                     handle(SampleData {
                         pid,
                         tid,
-                        abi,
                         regs,
                         backtrace,
                     });

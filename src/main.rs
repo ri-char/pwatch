@@ -33,6 +33,7 @@ fn parse_len(s: &str) -> Option<u32> {
         "2" => Some(sys::bindings::HW_BREAKPOINT_LEN_2),
         "4" => Some(sys::bindings::HW_BREAKPOINT_LEN_4),
         "8" => Some(sys::bindings::HW_BREAKPOINT_LEN_8),
+        "" => Some(sys::bindings::HW_BREAKPOINT_LEN_1),
         _ => None,
     }
 }
